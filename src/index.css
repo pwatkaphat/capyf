@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Outfit', 'Noto Sans Thai', sans-serif;
+}
+
+body {
+  @apply bg-[#f0fdf4] text-slate-800 antialiased min-h-screen;
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(152, 100%, 92%, 1) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, hsla(160, 100%, 94%, 1) 0px, transparent 50%);
+  background-attachment: fixed;
+}
+
+/* Custom Utilities for Premium feel */
+.glass-panel {
+  @apply bg-white/80 backdrop-blur-2xl border border-emerald-100/50 shadow-[0_8px_32px_rgba(16,185,129,0.1)] rounded-3xl;
+}
+
+.glass-card {
+  @apply bg-white/90 backdrop-blur-lg border border-emerald-100 shadow-[0_4px_24px_rgba(16,185,129,0.06)] rounded-3xl transition-all duration-300 hover:shadow-[0_12px_40px_rgba(16,185,129,0.15)] hover:-translate-y-1 hover:border-emerald-300;
+}
+
+.gradient-text {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-teal-600;
+}
