@@ -36,7 +36,7 @@ export default function App() {
 
   return (
     <Router>
-      <div className="app-shell">
+      <div className="app-shell" data-capyf-build="2026.07.14">
         {session && <Sidebar session={session} />}
         <main className={session ? 'app-main app-main--signed-in' : 'app-main'}>
           <Routes>
