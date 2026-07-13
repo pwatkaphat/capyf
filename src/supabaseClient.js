@@ -10,4 +10,11 @@ if (supabaseUrl === 'https://placeholder.supabase.co' || supabasePublishableKey 
   console.error('กรุณาตั้งค่า VITE_SUPABASE_URL และ VITE_SUPABASE_PUBLISHABLE_KEY ในไฟล์ .env');
 }
 
-export const supabase = createClient(supabaseUrl, supabasePublishableKey);
+export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
+  auth: {
+    storageKey: 'capyf-auth-v2',
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
+  },
+});
