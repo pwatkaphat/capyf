@@ -1,297 +1,111 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Activity, AlertTriangle, CheckCircle2, ChevronDown, Clock3, Droplets, FlaskConical, Lightbulb, MapPin, Power, RefreshCw, Sprout, Thermometer, Wifi } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import SensorCard from '../components/SensorCard';
-import { Thermometer, Droplets, Sprout, FlaskConical, Power, Bell, AlertTriangle, CheckCircle, Info, Activity, MapPin, ChevronDown } from 'lucide-react';
+import './Dashboard.css';
 
-export default function Dashboard() {
-  const [sensorData, setSensorData] = useState({ 
-    temperature: null, 
-    humidity: null,
-    soil_moisture: null,
-    soil_ph: null,
-    pump_status: null
-  });
+const defaultZones = ['แปลง A · แปลงหลัก', 'โรงเรือน 1', 'สวนผลไม้'];
+const loadZones = () => {
+  const saved = localStorage.getItem('capyf_zones') || localStorage.getItem('smartfarm_zones');
+  try { return saved ? JSON.parse(saved) : defaultZones; } catch { return defaultZones; }
+};
+const pumpIsOn = (value) => value === true || value === 1 || value === 'ON' || value === 'on';
+
+export default function Dashboard({ session }) {
   const [historyData, setHistoryData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const defaultZones = [
-    'Zone A (Main Field)',
-    'Zone B (Greenhouse 1)',
-    'Zone C (Orchard)'
-  ];
-
-  const [zones, setZones] = useState(() => {
-    const saved = localStorage.getItem('smartfarm_zones');
-    return saved ? JSON.parse(saved) : defaultZones;
-  });
-
+  const [pumpLoading, setPumpLoading] = useState(false);
+  const [zones] = useState(loadZones);
   const [selectedZone, setSelectedZone] = useState(zones[0]);
 
   useEffect(() => {
     const fetchLatestData = async () => {
-      const { data, error } = await supabase
-        .from('sensor_data')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      if (data && !error && data.length > 0) {
-        setHistoryData(data);
-        setSensorData(data[0]);
-      }
+      const { data } = await supabase.from('sensor_data').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false }).limit(30);
+      setHistoryData(data || []);
       setLoading(false);
     };
-
     fetchLatestData();
 
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'sensor_data' },
-        (payload) => {
-          const newData = payload.new;
-          setSensorData(newData);
-          setHistoryData((prev) => {
-            const updated = [newData, ...prev];
-            if (updated.length > 20) updated.pop();
-            return updated;
-          });
-        }
-      )
-      .subscribe();
+    const channel = supabase.channel(`capyf-sensors-${session.user.id}`).on('postgres_changes', {
+      event: '*', schema: 'public', table: 'sensor_data', filter: `user_id=eq.${session.user.id}`,
+    }, (payload) => {
+      if (payload.eventType === 'INSERT') setHistoryData((items) => [payload.new, ...items].slice(0, 30));
+      if (payload.eventType === 'UPDATE') setHistoryData((items) => items.map((item) => item.id === payload.new.id ? payload.new : item));
+    }).subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+    return () => { supabase.removeChannel(channel); };
+  }, [session.user.id]);
 
-  if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent"></div>
-      </div>
-    );
-  }
+  const zoneData = useMemo(() => {
+    const exact = historyData.filter((item) => item.zone === selectedZone);
+    return exact.length ? exact : historyData.filter((item) => !item.zone);
+  }, [historyData, selectedZone]);
+  const sensorData = useMemo(() => zoneData[0] || {}, [zoneData]);
+  const isPumpOn = pumpIsOn(sensorData.pump_status);
 
-  // Helper to format pump status
-  const getPumpStatus = (status) => {
-    if (status === true || status === 'ON' || status === 1) return 'ON';
-    return 'OFF';
-  };
-  
-  // Format time for alerts
-  const formatTime = (isoString) => {
-    if (!isoString) return '';
-    const date = new Date(isoString);
-    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-  };
-
-  // Generate alarm logs based on history
-  const generateAlarmLogs = () => {
-    const logs = [];
-    
-    // We look at all historyData (up to 20 records)
-    historyData.forEach((data, index) => {
-      const timeStr = formatTime(data.created_at);
-      
-      // Check conditions for this specific timestamp
-      if (data.temperature > 35) {
-        logs.push({ id: `log-temp-hi-${data.id || index}`, message: `Air temperature is too high (${data.temperature}°C). Sprinklers are recommended.`, time: timeStr, Icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100' });
-      }
-      if (data.temperature < 20 && data.temperature !== null) {
-        logs.push({ id: `log-temp-low-${data.id || index}`, message: `Air temperature is low (${data.temperature}°C). Suggest reducing watering.`, time: timeStr, Icon: Info, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100' });
-      }
-      if (data.soil_moisture !== null && data.soil_moisture < 30) {
-        logs.push({ id: `log-moist-${data.id || index}`, message: `Soil moisture is low (${data.soil_moisture}%). Water pump should be turned on.`, time: timeStr, Icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-100' });
-      }
-      if (data.pump_status === true || data.pump_status === 1 || data.pump_status === 'ON') {
-        logs.push({ id: `log-pump-on-${data.id || index}`, message: 'Sensor detected that the water pump is currently active.', time: timeStr, Icon: Power, color: 'text-cyan-600', bg: 'bg-cyan-50', border: 'border-cyan-100' });
-      }
-    });
-
-    if (logs.length === 0 && historyData.length > 0) {
-      const timeStr = formatTime(historyData[0].created_at);
-      logs.push({ id: 'log-ok', message: 'All environmental parameters are within optimal ranges (Normal).', time: timeStr, Icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100' });
-    }
-
-    return logs;
-  };
+  const status = useMemo(() => {
+    const issues = [];
+    if (sensorData.temperature > 35) issues.push(`อากาศร้อน ${sensorData.temperature}°C`);
+    if (sensorData.temperature !== null && sensorData.temperature < 20) issues.push(`อากาศเย็น ${sensorData.temperature}°C`);
+    if (sensorData.soil_moisture !== null && sensorData.soil_moisture < 30) issues.push(`ดินแห้ง เหลือ ${sensorData.soil_moisture}%`);
+    if (sensorData.soil_ph && (sensorData.soil_ph < 5.5 || sensorData.soil_ph > 8)) issues.push(`ค่า pH ควรตรวจสอบ`);
+    return issues;
+  }, [sensorData]);
 
   const handlePumpToggle = async () => {
-    const nextStatus = !sensorData?.pump_status;
-    
-    // Update local state optimistically
-    setSensorData(prev => ({ ...prev, pump_status: nextStatus }));
-
-    if (sensorData?.id) {
-      const { error } = await supabase
-        .from('sensor_data')
-        .update({ pump_status: nextStatus })
-        .eq('id', sensorData.id);
-      
-      if (error) {
-        console.error("Error updating pump status:", error);
-        // Revert if error occurs
-        setSensorData(prev => ({ ...prev, pump_status: !nextStatus }));
-      }
-    } else {
-      const { error } = await supabase
-        .from('sensor_data')
-        .insert([{ pump_status: nextStatus }]);
-      
-      if (error) {
-        console.error("Error inserting pump status:", error);
-        setSensorData(prev => ({ ...prev, pump_status: !nextStatus }));
-      }
+    setPumpLoading(true);
+    const nextStatus = !isPumpOn;
+    const response = sensorData.id
+      ? await supabase.from('sensor_data').update({ pump_status: nextStatus }).eq('id', sensorData.id).eq('user_id', session.user.id).select().single()
+      : await supabase.from('sensor_data').insert({ user_id: session.user.id, zone: selectedZone, pump_status: nextStatus }).select().single();
+    if (response.data) {
+      setHistoryData((items) => sensorData.id ? items.map((item) => item.id === response.data.id ? response.data : item) : [response.data, ...items]);
     }
+    setPumpLoading(false);
   };
 
-  const alarmLogs = generateAlarmLogs();
+  const formatUpdate = (value) => {
+    if (!value) return 'ยังไม่มีข้อมูลจากเซนเซอร์';
+    return new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+  };
+
+  if (loading) return <div className="app-loading"><RefreshCw className="dashboard-spinner" /><p>กำลังอ่านข้อมูลจากสวน...</p></div>;
 
   return (
-    <div className="p-6 md:p-10 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
-            <span className="text-sm font-bold text-emerald-600 uppercase tracking-wider">Realtime Connected</span>
-          </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-slate-800 tracking-tight">Farm Overview</h1>
-          <p className="text-slate-500 mt-2 font-medium">Live feeds from agricultural IoT sensors</p>
-        </div>
+    <div className="page-wrap dashboard-page">
+      <header className="page-header">
+        <div><span className="eyebrow"><span className="eyebrow-dot" /> เชื่อมต่อข้อมูลแบบเรียลไทม์</span><h1 className="page-title">วันนี้สวนเป็นอย่างไรบ้าง?</h1><p className="page-subtitle">CapyF สรุปให้ดูง่าย ตัดสินใจดูแลสวนได้ทันที</p></div>
+        <label className="zone-picker" aria-label="เลือกพื้นที่ในสวน"><MapPin size={18} /><select value={selectedZone} onChange={(e) => setSelectedZone(e.target.value)}>{zones.map((zone) => <option key={zone}>{zone}</option>)}</select><ChevronDown size={17} /></label>
+      </header>
 
-        {/* Custom styled Zone Dropdown */}
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <select
-              value={selectedZone}
-              onChange={(e) => setSelectedZone(e.target.value)}
-              className="appearance-none bg-white/70 backdrop-blur-md border border-emerald-100/50 shadow-sm rounded-2xl pl-10 pr-10 py-3.5 text-sm font-bold text-slate-700 outline-none transition-all focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 cursor-pointer"
-            >
-              {zones.map((zone) => (
-                <option key={zone} value={zone} className="font-semibold text-slate-700 bg-white">
-                  {zone}
-                </option>
-              ))}
-            </select>
-            {/* Left side MapPin Icon */}
-            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-emerald-600">
-              <MapPin size={16} strokeWidth={2.5} />
-            </div>
-            {/* Right side custom dropdown Arrow */}
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4 text-emerald-600">
-              <ChevronDown size={16} strokeWidth={2.5} />
-            </div>
-          </div>
-        </div>
+      <section className={status.length ? 'farm-summary farm-summary--warning' : 'farm-summary'}>
+        <div className="summary-illustration">{status.length ? '🌤️' : '🌿'}</div>
+        <div className="summary-copy"><span>{status.length ? 'มีเรื่องที่ควรดูแล' : 'สวนของคุณสบายดี'}</span><h2>{status.length ? status[0] : 'ค่าต่าง ๆ อยู่ในช่วงน่าพอใจ'}</h2><p>{status.length > 1 ? `และอีก ${status.length - 1} รายการที่ควรตรวจสอบ` : 'เดินระบบตามปกติได้เลย เดี๋ยว CapyF ช่วยเฝ้าดูให้'}</p></div>
+        <div className="summary-time"><Clock3 size={16} /><span>อัปเดตล่าสุด<br /><strong>{formatUpdate(sensorData.created_at)}</strong></span></div>
+      </section>
+
+      <div className="sensor-grid">
+        <SensorCard title="อุณหภูมิอากาศ" value={sensorData.temperature} unit="°C" icon={Thermometer} tone="orange" status={sensorData.temperature > 35 ? 'ค่อนข้างร้อน' : 'กำลังดี'} hint="เหมาะประมาณ 20–35°C" />
+        <SensorCard title="ความชื้นในอากาศ" value={sensorData.humidity} unit="%" icon={Droplets} tone="blue" hint="ช่วยดูสภาพอากาศรอบพืช" />
+        <SensorCard title="ความชื้นในดิน" value={sensorData.soil_moisture} unit="%" icon={Sprout} tone="green" status={sensorData.soil_moisture < 30 ? 'ดินเริ่มแห้ง' : 'ดินชุ่มดี'} hint="ควรรักษาไว้มากกว่า 30%" />
+        <SensorCard title="ค่าความเป็นกรด–ด่าง" value={sensorData.soil_ph} unit="pH" icon={FlaskConical} tone="purple" hint="พืชส่วนใหญ่ชอบ pH 5.5–8.0" />
       </div>
 
-      {/* Row 1: 4 Sensor Cards (4 columns on large screens) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <SensorCard 
-          title="Air Temperature" 
-          value={sensorData?.temperature} 
-          unit="°C" 
-          icon={Thermometer}
-          colorClass={{ bg: 'bg-orange-100', text: 'text-orange-600' }}
-        />
-        <SensorCard 
-          title="Air Humidity" 
-          value={sensorData?.humidity} 
-          unit="%" 
-          icon={Droplets}
-          colorClass={{ bg: 'bg-blue-100', text: 'text-blue-600' }}
-        />
-        <SensorCard 
-          title="Soil Moisture" 
-          value={sensorData?.soil_moisture} 
-          unit="%" 
-          icon={Sprout}
-          colorClass={{ bg: 'bg-amber-100', text: 'text-amber-700' }}
-        />
-        <SensorCard 
-          title="Soil pH" 
-          value={sensorData?.soil_ph} 
-          unit="pH" 
-          icon={FlaskConical}
-          colorClass={{ bg: 'bg-fuchsia-100', text: 'text-fuchsia-600' }}
-        />
-      </div>
+      <div className="dashboard-bottom-grid">
+        <section className="panel care-panel">
+          <div className="section-title"><span className="section-icon"><Lightbulb size={21} /></span><div><h2>คำแนะนำจาก CapyF</h2><p>เรื่องสำคัญที่ช่วยให้ดูแลสวนง่ายขึ้น</p></div></div>
+          <div className="care-list">
+            {status.length ? status.map((item) => <div className="care-item care-item--warning" key={item}><AlertTriangle size={20} /><span><strong>{item}</strong><small>ลองตรวจสภาพจริงที่แปลงและปรับการดูแลตามความเหมาะสม</small></span></div>) : <div className="care-item"><CheckCircle2 size={20} /><span><strong>ทุกอย่างอยู่ในเกณฑ์ดี</strong><small>ยังไม่ต้องทำอะไรเพิ่มเติม ระบบจะคอยแจ้งเมื่อมีค่าเปลี่ยนแปลง</small></span></div>}
+            {!sensorData.id && <div className="care-item care-item--info"><Wifi size={20} /><span><strong>ยังไม่พบข้อมูลในพื้นที่นี้</strong><small>เพิ่มอุปกรณ์หรือเลือกพื้นที่ที่มีเซนเซอร์เพื่อเริ่มดูข้อมูล</small></span></div>}
+          </div>
+        </section>
 
-      {/* Row 2: 2-column layout (Pump Card: 1/3 width, Logs: 2/3 width) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Custom Pump Card with Toggle Switch */}
-        <div className="glass-card p-6 relative overflow-hidden group flex flex-col justify-between min-h-[220px] lg:col-span-1">
-          <div className="absolute -right-6 -top-6 w-32 h-32 opacity-20 blur-2xl rounded-full bg-cyan-100 transition-all duration-500 group-hover:opacity-40 group-hover:scale-150"></div>
-          
-          <div className="relative z-10 flex flex-col h-full justify-between w-full">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-600 shadow-sm transition-transform duration-300 group-hover:scale-110">
-                <Power size={28} strokeWidth={2} />
-              </div>
-              <h2 className="text-lg font-semibold text-slate-600">Water Pump</h2>
-            </div>
-            
-            {/* Dark green toggle switch container */}
-            <div className="bg-[#0b4635] border border-emerald-800/40 rounded-2xl p-4 flex items-center justify-between mt-auto shadow-inner">
-              <span className="text-sm md:text-base font-bold text-emerald-100 tracking-wide">
-                {sensorData?.pump_status ? 'Active' : 'Inactive'}
-              </span>
-              <button 
-                onClick={handlePumpToggle}
-                className={`relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-300 ease-in-out focus:outline-none ${
-                  sensorData?.pump_status ? 'bg-white' : 'bg-[#05291f]'
-                }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-7 w-7 transform rounded-full shadow-md ring-0 transition duration-300 ease-in-out ${
-                    sensorData?.pump_status 
-                      ? 'translate-x-6 bg-[#0b4635]' 
-                      : 'translate-x-0 bg-white'
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Alarm History Log Section */}
-        <div className="glass-card p-6 md:p-8 lg:col-span-2">
-          <div className="flex items-center justify-between mb-6 border-b border-emerald-100 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#d1fae5] text-emerald-700">
-                <Activity size={20} strokeWidth={2.5} />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-slate-800">Alarm Logs</h2>
-                <p className="text-sm font-medium text-slate-500">Chronological environmental events and suggestions</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-            {alarmLogs.map((log) => (
-              <div 
-                key={log.id} 
-                className={`flex items-start md:items-center justify-between p-4 rounded-2xl border ${log.bg} ${log.border} transition-all duration-300 hover:shadow-sm`}
-              >
-                <div className="flex items-start gap-4">
-                  <div className={`mt-0.5 ${log.color}`}>
-                    <log.Icon size={20} strokeWidth={2.5} />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-slate-700">{log.message}</p>
-                  </div>
-                </div>
-                <div className="mt-2 md:mt-0 flex-shrink-0">
-                  <span className="text-xs font-bold text-slate-400 bg-white px-3 py-1.5 rounded-lg border border-slate-100 shadow-sm flex items-center gap-1">
-                    Time: {log.time}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <section className={isPumpOn ? 'panel pump-panel is-on' : 'panel pump-panel'}>
+          <div className="pump-heading"><span><Power size={22} /></span><div><h2>ปั๊มน้ำ</h2><p>{isPumpOn ? 'กำลังรดน้ำอยู่' : 'ปิดอยู่ พร้อมใช้งาน'}</p></div></div>
+          <div className="pump-visual"><span className="pump-drop">💧</span><i /><i /><i /></div>
+          <button type="button" className={isPumpOn ? 'pump-button is-on' : 'pump-button'} onClick={handlePumpToggle} disabled={pumpLoading}><Power size={19} />{pumpLoading ? 'กำลังสั่งงาน...' : isPumpOn ? 'หยุดรดน้ำ' : 'เปิดปั๊มน้ำ'}</button>
+          <small className="pump-note"><Activity size={14} /> ตรวจสอบพื้นที่ก่อนเปิดปั๊มทุกครั้ง</small>
+        </section>
       </div>
     </div>
   );

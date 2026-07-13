@@ -1,356 +1,82 @@
-import { useState, useEffect } from 'react';
-import { Sliders, MapPin, Save, BellRing, ToggleLeft, ToggleRight } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { BellRing, CheckCircle2, ChevronDown, Droplets, Gauge, MapPin, Save, Thermometer, ToggleLeft, ToggleRight, Zap } from 'lucide-react';
+import './SensorConfig.css';
+
+const defaultZones = ['แปลง A · แปลงหลัก', 'โรงเรือน 1', 'สวนผลไม้'];
+const defaultConfig = { tempMax: 35, tempMin: 20, moistureMin: 30, phMax: 8, phMin: 5.5, autoWatering: true, autoWateringThreshold: 35, tempTriggerEnabled: false, tempTriggerThreshold: 38, triggerMode: 'OR' };
+const getZones = () => {
+  const saved = localStorage.getItem('capyf_zones') || localStorage.getItem('smartfarm_zones');
+  try { return saved ? JSON.parse(saved) : defaultZones; } catch { return defaultZones; }
+};
 
 export default function SensorConfig() {
-  const defaultZones = ['Zone A (Main Field)', 'Zone B (Greenhouse 1)', 'Zone C (Orchard)'];
-  const [zones] = useState(() => {
-    const saved = localStorage.getItem('smartfarm_zones');
-    return saved ? JSON.parse(saved) : defaultZones;
-  });
-
+  const [zones] = useState(getZones);
   const [selectedZone, setSelectedZone] = useState(zones[0]);
-
-  // Thresholds state per zone
   const [thresholds, setThresholds] = useState(() => {
-    const saved = localStorage.getItem('smartfarm_thresholds');
-    if (saved) return JSON.parse(saved);
-    
-    // Default config template for all zones
-    const config = {};
-    zones.forEach(zone => {
-      config[zone] = {
-        tempMax: 35,
-        tempMin: 20,
-        moistureMin: 30,
-        phMax: 8.0,
-        phMin: 5.5,
-        autoWatering: true,
-        autoWateringThreshold: 35,
-        tempTriggerEnabled: false,
-        tempTriggerThreshold: 38,
-        triggerMode: 'OR',
-      };
-    });
-    return config;
+    const saved = localStorage.getItem('capyf_thresholds') || localStorage.getItem('smartfarm_thresholds');
+    try { return saved ? JSON.parse(saved) : Object.fromEntries(zones.map((zone) => [zone, { ...defaultConfig }])); } catch { return Object.fromEntries(zones.map((zone) => [zone, { ...defaultConfig }])); }
   });
+  const [saved, setSaved] = useState(false);
 
-  const [status, setStatus] = useState({ type: '', message: '' });
-
-  // Update thresholds structure if a new zone was added recently
   useEffect(() => {
-    setThresholds(prev => {
-      const updated = { ...prev };
-      let changed = false;
-      zones.forEach(zone => {
-        if (!updated[zone]) {
-          updated[zone] = {
-            tempMax: 35,
-            tempMin: 20,
-            moistureMin: 30,
-            phMax: 8.0,
-            phMin: 5.5,
-            autoWatering: true,
-            autoWateringThreshold: 35,
-            tempTriggerEnabled: false,
-            tempTriggerThreshold: 38,
-            triggerMode: 'OR',
-          };
-          changed = true;
-        }
-      });
-      if (changed) {
-        localStorage.setItem('smartfarm_thresholds', JSON.stringify(updated));
-      }
-      return updated;
+    setThresholds((current) => {
+      const next = { ...current };
+      zones.forEach((zone) => { if (!next[zone]) next[zone] = { ...defaultConfig }; });
+      return next;
     });
   }, [zones]);
 
-  const handleInputChange = (field, value) => {
-    setThresholds(prev => {
-      const updated = {
-        ...prev,
-        [selectedZone]: {
-          ...prev[selectedZone],
-          [field]: value
-        }
-      };
-      return updated;
-    });
+  const config = { ...defaultConfig, ...thresholds[selectedZone] };
+  const update = (field, value) => setThresholds((current) => ({ ...current, [selectedZone]: { ...defaultConfig, ...current[selectedZone], [field]: value } }));
+  const handleSave = (event) => {
+    event.preventDefault();
+    localStorage.setItem('capyf_thresholds', JSON.stringify(thresholds));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
   };
-
-  const handleSave = (e) => {
-    e.preventDefault();
-    localStorage.setItem('smartfarm_thresholds', JSON.stringify(thresholds));
-    setStatus({ type: 'success', message: `Configuration for ${selectedZone} saved successfully!` });
-    setTimeout(() => setStatus({ type: '', message: '' }), 3000);
-  };
-
-  const getSafeConfig = (config) => {
-    return {
-      tempMax: 35,
-      tempMin: 20,
-      moistureMin: 30,
-      phMax: 8.0,
-      phMin: 5.5,
-      autoWatering: true,
-      autoWateringThreshold: 35,
-      tempTriggerEnabled: false,
-      tempTriggerThreshold: 38,
-      triggerMode: 'OR',
-      ...config
-    };
-  };
-
-  const currentConfig = getSafeConfig(thresholds[selectedZone]);
 
   return (
-    <div className="p-6 md:p-10 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-slate-800 tracking-tight">Sensor Configuration</h1>
-          <p className="text-slate-500 mt-2 font-medium">Set thresholds and automation parameters zone by zone</p>
+    <div className="page-wrap config-page">
+      <header className="page-header">
+        <div><span className="eyebrow"><Gauge size={15} /> ตั้งค่าการดูแลอัตโนมัติ</span><h1 className="page-title">บอก CapyF ว่าควรแจ้งเมื่อไร</h1><p className="page-subtitle">เลื่อนค่าตามที่ต้องการ ระบบจะใช้เป็นเกณฑ์เฝ้าดูสวน</p></div>
+        <label className="zone-picker"><MapPin size={18} /><select value={selectedZone} onChange={(e) => setSelectedZone(e.target.value)}>{zones.map((zone) => <option key={zone}>{zone}</option>)}</select><ChevronDown size={17} /></label>
+      </header>
+
+      {saved && <div className="status-message status-message--success config-success"><CheckCircle2 size={18} /> บันทึกการตั้งค่าของ “{selectedZone}” แล้ว</div>}
+
+      <form onSubmit={handleSave} className="config-layout">
+        <div className="config-main">
+          <section className="panel config-card">
+            <div className="config-card-heading"><span className="config-icon config-icon--yellow"><BellRing size={21} /></span><div><h2>เกณฑ์แจ้งเตือน</h2><p>ถ้าค่าเกินช่วงนี้ CapyF จะแจ้งให้ทราบ</p></div></div>
+            <div className="range-grid">
+              <RangeSetting icon={Thermometer} title="อุณหภูมิสูงสุด" help="อากาศร้อนเกินไป" value={config.tempMax} min={25} max={50} unit="°C" onChange={(value) => update('tempMax', value)} />
+              <RangeSetting icon={Thermometer} title="อุณหภูมิต่ำสุด" help="อากาศเย็นเกินไป" value={config.tempMin} min={10} max={25} unit="°C" onChange={(value) => update('tempMin', value)} />
+              <RangeSetting icon={Droplets} title="ความชื้นดินต่ำสุด" help="ดินเริ่มแห้ง ควรตรวจดู" value={config.moistureMin} min={10} max={60} unit="%" onChange={(value) => update('moistureMin', value)} />
+            </div>
+            <div className="ph-setting"><div><strong>ช่วงค่า pH ที่เหมาะสม</strong><small>ระบบจะแจ้งเมื่อค่าอยู่นอกช่วง</small></div><label>ต่ำสุด<input type="number" step="0.1" min="3" max="7" value={config.phMin} onChange={(e) => update('phMin', Number(e.target.value))} /></label><span>ถึง</span><label>สูงสุด<input type="number" step="0.1" min="7" max="10" value={config.phMax} onChange={(e) => update('phMax', Number(e.target.value))} /></label></div>
+          </section>
+
+          <section className="panel config-card">
+            <div className="config-card-heading"><span className="config-icon config-icon--blue"><Zap size={21} /></span><div><h2>สั่งรดน้ำอัตโนมัติ</h2><p>กำหนดเงื่อนไขให้ปั๊มน้ำเริ่มทำงานเอง</p></div></div>
+            <div className="logic-picker"><div><strong>เมื่อเข้าเงื่อนไข</strong><small>เลือกว่าจะใช้เพียงข้อเดียวหรือทุกข้อพร้อมกัน</small></div><span><button type="button" className={config.triggerMode === 'OR' ? 'is-active' : ''} onClick={() => update('triggerMode', 'OR')}>ข้อใดข้อหนึ่ง</button><button type="button" className={config.triggerMode === 'AND' ? 'is-active' : ''} onClick={() => update('triggerMode', 'AND')}>ครบทุกข้อ</button></span></div>
+            <AutomationRule icon={Droplets} title="ดินแห้ง" help="เปิดปั๊มเมื่อความชื้นในดินต่ำกว่า" enabled={config.autoWatering} onToggle={() => update('autoWatering', !config.autoWatering)} value={config.autoWateringThreshold} min={15} max={60} unit="%" onChange={(value) => update('autoWateringThreshold', value)} />
+            <AutomationRule icon={Thermometer} title="อากาศร้อน" help="เปิดปั๊มเพื่อช่วยลดอุณหภูมิเมื่อสูงกว่า" enabled={config.tempTriggerEnabled} onToggle={() => update('tempTriggerEnabled', !config.tempTriggerEnabled)} value={config.tempTriggerThreshold} min={30} max={48} unit="°C" onChange={(value) => update('tempTriggerThreshold', value)} />
+          </section>
         </div>
 
-        {/* Zone Selector */}
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <select
-              value={selectedZone}
-              onChange={(e) => setSelectedZone(e.target.value)}
-              className="appearance-none bg-white/70 backdrop-blur-md border border-emerald-100/50 shadow-sm rounded-2xl pl-10 pr-10 py-3.5 text-sm font-bold text-slate-700 outline-none transition-all focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 cursor-pointer"
-            >
-              {zones.map((zone) => (
-                <option key={zone} value={zone} className="font-semibold text-slate-700 bg-white">
-                  {zone}
-                </option>
-              ))}
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-emerald-600">
-              <MapPin size={16} strokeWidth={2.5} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {status.message && (
-        <div className="mb-8 p-5 rounded-2xl text-sm font-bold border bg-emerald-50 text-emerald-700 border-emerald-100 shadow-sm">
-          {status.message}
-        </div>
-      )}
-
-      <form onSubmit={handleSave} className="space-y-6">
-        {/* Environment Alarms */}
-        <div className="glass-card p-6 md:p-8">
-          <div className="flex items-center gap-3 mb-6 border-b border-emerald-50 pb-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
-              <BellRing size={20} strokeWidth={2.5} />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-800">Alarm Thresholds</h2>
-              <p className="text-sm font-medium text-slate-500">Define triggers for notification warnings</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Air Temperature */}
-            <div className="space-y-4">
-              <h3 className="font-bold text-slate-700 border-l-4 border-orange-500 pl-3">Air Temperature Limits</h3>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Max Temperature Limit ({currentConfig.tempMax}°C)</label>
-                <input
-                  type="range"
-                  min="25"
-                  max="50"
-                  value={currentConfig.tempMax}
-                  onChange={(e) => handleInputChange('tempMax', parseInt(e.target.value))}
-                  className="w-full accent-emerald-600 h-2 bg-slate-100 rounded-lg cursor-pointer"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Min Temperature Limit ({currentConfig.tempMin}°C)</label>
-                <input
-                  type="range"
-                  min="10"
-                  max="25"
-                  value={currentConfig.tempMin}
-                  onChange={(e) => handleInputChange('tempMin', parseInt(e.target.value))}
-                  className="w-full accent-emerald-600 h-2 bg-slate-100 rounded-lg cursor-pointer"
-                />
-              </div>
-            </div>
-
-            {/* Soil Moisture & pH */}
-            <div className="space-y-4">
-              <h3 className="font-bold text-slate-700 border-l-4 border-amber-500 pl-3">Soil Moisture & pH Limits</h3>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Min Soil Moisture Warning ({currentConfig.moistureMin}%)</label>
-                <input
-                  type="range"
-                  min="10"
-                  max="50"
-                  value={currentConfig.moistureMin}
-                  onChange={(e) => handleInputChange('moistureMin', parseInt(e.target.value))}
-                  className="w-full accent-emerald-600 h-2 bg-slate-100 rounded-lg cursor-pointer"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">Min pH</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="3.0"
-                    max="7.0"
-                    value={currentConfig.phMin}
-                    onChange={(e) => handleInputChange('phMin', parseFloat(e.target.value))}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 focus:border-emerald-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">Max pH</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="7.0"
-                    max="10.0"
-                    value={currentConfig.phMax}
-                    onChange={(e) => handleInputChange('phMax', parseFloat(e.target.value))}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 focus:border-emerald-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Irrigation Automation */}
-        <div className="glass-card p-6 md:p-8">
-          <div className="flex items-center gap-3 mb-6 border-b border-emerald-5 pb-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
-              <Sliders size={20} strokeWidth={2.5} />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-800">Irrigation Automation</h2>
-              <p className="text-sm font-medium text-slate-500">Configure conditional rules for automatic water pump activation</p>
-            </div>
-          </div>
-
-          {/* Trigger Condition Logic Selector */}
-          <div className="mb-6 bg-slate-50/50 border border-slate-100 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h3 className="font-bold text-slate-800">Trigger Rule Logic</h3>
-              <p className="text-xs text-slate-400 font-semibold mt-0.5">Combine conditions using AND or OR operators</p>
-            </div>
-            <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200/50 shadow-inner">
-              <button
-                type="button"
-                onClick={() => handleInputChange('triggerMode', 'OR')}
-                className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
-                  currentConfig.triggerMode === 'OR' 
-                    ? 'bg-white text-emerald-700 shadow-sm' 
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                ANY (OR)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleInputChange('triggerMode', 'AND')}
-                className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
-                  currentConfig.triggerMode === 'AND' 
-                    ? 'bg-white text-emerald-700 shadow-sm' 
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                ALL (AND)
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-8">
-            {/* Condition 1: Soil Moisture */}
-            <div className="border border-slate-100 rounded-2xl p-5 bg-slate-50/30">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="font-bold text-slate-800">Trigger by Soil Moisture</h3>
-                  <p className="text-xs text-slate-400 font-semibold mt-0.5">Activate pump when soil moisture is dry</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleInputChange('autoWatering', !currentConfig.autoWatering)}
-                  className="focus:outline-none text-emerald-600 hover:text-emerald-700 transition-colors"
-                >
-                  {currentConfig.autoWatering ? (
-                    <ToggleRight size={40} strokeWidth={1.5} />
-                  ) : (
-                    <ToggleLeft size={40} strokeWidth={1.5} className="text-slate-300" />
-                  )}
-                </button>
-              </div>
-
-              <div className={`transition-all duration-300 ${currentConfig.autoWatering ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Trigger pump if soil moisture drops below</label>
-                  <span className="text-sm font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">{currentConfig.autoWateringThreshold}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="15"
-                  max="60"
-                  value={currentConfig.autoWateringThreshold}
-                  onChange={(e) => handleInputChange('autoWateringThreshold', parseInt(e.target.value))}
-                  className="w-full accent-emerald-600 h-2 bg-slate-100 rounded-lg cursor-pointer"
-                />
-              </div>
-            </div>
-
-            {/* Condition 2: Air Temperature */}
-            <div className="border border-slate-100 rounded-2xl p-5 bg-slate-50/30">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="font-bold text-slate-800">Trigger by Air Temperature</h3>
-                  <p className="text-xs text-slate-400 font-semibold mt-0.5">Activate pump for cooling down when weather is hot</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleInputChange('tempTriggerEnabled', !currentConfig.tempTriggerEnabled)}
-                  className="focus:outline-none text-emerald-600 hover:text-emerald-700 transition-colors"
-                >
-                  {currentConfig.tempTriggerEnabled ? (
-                    <ToggleRight size={40} strokeWidth={1.5} />
-                  ) : (
-                    <ToggleLeft size={40} strokeWidth={1.5} className="text-slate-300" />
-                  )}
-                </button>
-              </div>
-
-              <div className={`transition-all duration-300 ${currentConfig.tempTriggerEnabled ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Trigger pump if temperature rises above</label>
-                  <span className="text-sm font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">{currentConfig.tempTriggerThreshold}°C</span>
-                </div>
-                <input
-                  type="range"
-                  min="30"
-                  max="48"
-                  value={currentConfig.tempTriggerThreshold}
-                  onChange={(e) => handleInputChange('tempTriggerThreshold', parseInt(e.target.value))}
-                  className="w-full accent-emerald-600 h-2 bg-slate-100 rounded-lg cursor-pointer"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <button
-          type="submit"
-          className="w-full rounded-2xl bg-emerald-600 px-5 py-4 text-white font-bold tracking-wide transition-all hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-600/30 active:scale-[0.98] flex items-center justify-center gap-2 shadow-sm"
-        >
-          <Save size={18} />
-          Save Configuration
-        </button>
+        <aside className="config-side">
+          <div className="config-note"><span>🌱</span><h2>ค่าที่แนะนำ</h2><p>พืชแต่ละชนิดต้องการน้ำและอุณหภูมิต่างกัน ใช้ค่าเริ่มต้นไปก่อน แล้วค่อยปรับตามชนิดพืชและสภาพจริงในสวน</p></div>
+          <button type="submit" className="primary-button save-config"><Save size={19} /> บันทึกการตั้งค่า</button>
+        </aside>
       </form>
     </div>
   );
+}
+
+function RangeSetting({ icon: Icon, title, help, value, min, max, unit, onChange }) {
+  return <div className="range-setting"><div className="range-label"><span><Icon size={18} /></span><div><strong>{title}</strong><small>{help}</small></div><b>{value}{unit}</b></div><input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} /></div>;
+}
+
+function AutomationRule({ icon: Icon, title, help, enabled, onToggle, value, min, max, unit, onChange }) {
+  return <div className={enabled ? 'automation-rule is-enabled' : 'automation-rule'}><div className="automation-heading"><span><Icon size={19} /></span><div><strong>{title}</strong><small>{help}</small></div><button type="button" onClick={onToggle} aria-label={`${enabled ? 'ปิด' : 'เปิด'}เงื่อนไข ${title}`}>{enabled ? <ToggleRight size={39} /> : <ToggleLeft size={39} />}</button></div><div className="automation-range"><input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} disabled={!enabled} /><b>{value}{unit}</b></div></div>;
 }

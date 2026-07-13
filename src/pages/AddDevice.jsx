@@ -1,205 +1,95 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { CheckCircle2, ChevronDown, Cpu, MapPin, Plus, Radio, Trash2, Wifi } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { useNavigate } from 'react-router-dom';
-import { Cpu, MapPin, Trash2 } from 'lucide-react';
+import './AddDevice.css';
+
+const defaultZones = ['แปลง A · แปลงหลัก', 'โรงเรือน 1', 'สวนผลไม้'];
+const getZones = () => {
+  const saved = localStorage.getItem('capyf_zones') || localStorage.getItem('smartfarm_zones');
+  try { return saved ? JSON.parse(saved) : defaultZones; } catch { return defaultZones; }
+};
 
 export default function AddDevice({ session }) {
-  const defaultZones = [
-    'Zone A (Main Field)',
-    'Zone B (Greenhouse 1)',
-    'Zone C (Orchard)'
-  ];
-
-  const [zones, setZones] = useState(() => {
-    const saved = localStorage.getItem('smartfarm_zones');
-    return saved ? JSON.parse(saved) : defaultZones;
-  });
-
+  const [zones, setZones] = useState(getZones);
   const [selectedZone, setSelectedZone] = useState(zones[0]);
-  const [macAddress, setMacAddress] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState({ type: '', message: '' });
-  
-  const [isAddingZone, setIsAddingZone] = useState(false);
   const [newZoneName, setNewZoneName] = useState('');
-  const navigate = useNavigate();
+  const [showNewZone, setShowNewZone] = useState(false);
+  const [macAddress, setMacAddress] = useState('');
+  const [devices, setDevices] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
 
-  const handleCreateZone = () => {
-    const trimmed = newZoneName.trim();
-    if (!trimmed) return;
-    if (zones.includes(trimmed)) {
-      setSelectedZone(trimmed);
-      setIsAddingZone(false);
+  useEffect(() => {
+    supabase.from('user_devices').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false }).then(({ data }) => setDevices(data || []));
+  }, [session.user.id]);
+
+  const saveZones = (nextZones) => {
+    setZones(nextZones);
+    localStorage.setItem('capyf_zones', JSON.stringify(nextZones));
+  };
+
+  const addZone = () => {
+    const name = newZoneName.trim();
+    if (!name || zones.includes(name)) return;
+    const next = [...zones, name];
+    saveZones(next);
+    setSelectedZone(name);
+    setNewZoneName('');
+    setShowNewZone(false);
+  };
+
+  const deleteZone = () => {
+    if (zones.length === 1) return;
+    const next = zones.filter((zone) => zone !== selectedZone);
+    saveZones(next);
+    setSelectedZone(next[0]);
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setMessage({ type: '', text: '' });
+    const normalizedMac = macAddress.trim().toUpperCase();
+    if (!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(normalizedMac)) {
+      setMessage({ type: 'error', text: 'รูปแบบรหัสอุปกรณ์ไม่ถูกต้อง ตัวอย่างที่ถูกต้อง: 24:0A:C4:00:11:22' });
       return;
     }
-    const updated = [...zones, trimmed];
-    setZones(updated);
-    localStorage.setItem('smartfarm_zones', JSON.stringify(updated));
-    setSelectedZone(trimmed);
-    setNewZoneName('');
-    setIsAddingZone(false);
-  };
-
-  const handleDeleteZone = () => {
-    if (zones.length <= 1) return; // Prevent deleting the last zone
-    const updated = zones.filter((z) => z !== selectedZone);
-    setZones(updated);
-    localStorage.setItem('smartfarm_zones', JSON.stringify(updated));
-    setSelectedZone(updated[0]);
-  };
-
-  const handleAddDevice = async (e) => {
-    e.preventDefault();
     setLoading(true);
-    setStatus({ type: '', message: '' });
-
-    // Try inserting with zone field
-    let { error } = await supabase
-      .from('user_devices')
-      .insert([
-        { 
-          user_id: session.user.id, 
-          device_mac: macAddress,
-          zone: selectedZone
-        }
-      ]);
-
-    // Fallback: If DB schema doesn't have 'zone' column, insert only required columns
-    if (error && (error.code === '42703' || (error.message && error.message.includes('column')))) {
-      const retry = await supabase
-        .from('user_devices')
-        .insert([
-          { user_id: session.user.id, device_mac: macAddress }
-        ]);
-      error = retry.error;
-    }
-
-    if (error) {
-      setStatus({ type: 'error', message: error.message });
-    } else {
-      setStatus({ type: 'success', message: 'Device connected successfully! Redirecting to Dashboard...' });
-      setTimeout(() => navigate('/dashboard'), 2000);
+    const { data, error } = await supabase.from('user_devices').insert({ user_id: session.user.id, device_mac: normalizedMac, zone: selectedZone }).select().single();
+    if (error) setMessage({ type: 'error', text: error.message });
+    else {
+      setDevices((items) => [data, ...items]);
+      setMacAddress('');
+      setMessage({ type: 'success', text: 'เพิ่มอุปกรณ์เรียบร้อยแล้ว CapyF พร้อมรับข้อมูลจากสวน' });
     }
     setLoading(false);
   };
 
   return (
-    <div className="p-6 md:p-10 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="mb-10">
-        <h1 className="text-3xl md:text-4xl font-extrabold text-slate-800">Add Device</h1>
-        <p className="text-slate-500 mt-2 font-medium">Register a new sensor device to your system</p>
-      </div>
+    <div className="page-wrap device-page">
+      <header className="page-header"><div><span className="eyebrow"><Radio size={15} /> เชื่อมต่ออุปกรณ์</span><h1 className="page-title">เพิ่มเซนเซอร์เข้าสวน</h1><p className="page-subtitle">ทำตาม 2 ขั้นตอนง่าย ๆ แล้ว CapyF จะเริ่มรับข้อมูลให้คุณ</p></div></header>
 
-      <div className="glass-card max-w-xl p-8 md:p-10">
-        <div className="flex items-center gap-4 mb-8">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
-            <Cpu size={24} strokeWidth={2.5} />
+      <div className="device-layout">
+        <form onSubmit={handleSubmit} className="panel device-form">
+          <div className="form-step"><span>1</span><div><h2>เลือกพื้นที่ติดตั้ง</h2><p>ข้อมูลจะถูกจัดกลุ่มตามพื้นที่นี้</p></div></div>
+          <div className="zone-form-row">
+            <label className="select-wrap"><MapPin size={18} /><select className="field-select" value={selectedZone} onChange={(e) => setSelectedZone(e.target.value)}>{zones.map((zone) => <option key={zone}>{zone}</option>)}</select><ChevronDown size={17} /></label>
+            <button type="button" className="secondary-button compact-button" onClick={() => setShowNewZone((value) => !value)}><Plus size={18} /> เพิ่มพื้นที่</button>
+            <button type="button" className="danger-button icon-button" onClick={deleteZone} disabled={zones.length === 1} aria-label="ลบพื้นที่นี้"><Trash2 size={18} /></button>
           </div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-800">Hardware Configuration</h2>
-            <p className="text-sm font-medium text-slate-500">Configure zone, sensor type and hardware identity</p>
-          </div>
-        </div>
+          {showNewZone && <div className="new-zone-row"><input className="field-input" value={newZoneName} onChange={(e) => setNewZoneName(e.target.value)} placeholder="เช่น แปลงผักหลังบ้าน" autoFocus /><button type="button" className="primary-button" onClick={addZone}>บันทึกพื้นที่</button></div>}
 
-        {status.message && (
-          <div className={`mb-8 p-5 rounded-2xl text-sm font-medium border ${
-            status.type === 'error' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'
-          }`}>
-            {status.message}
-          </div>
-        )}
-
-        <form onSubmit={handleAddDevice} className="space-y-6">
-          {/* Zone Selector */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-                <MapPin size={16} className="text-emerald-500" />
-                Select Zone
-              </label>
-              {!isAddingZone ? (
-                <button
-                  type="button"
-                  onClick={() => setIsAddingZone(true)}
-                  className="text-xs font-bold text-emerald-600 hover:text-emerald-700 hover:underline"
-                >
-                  + Create New Zone
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setIsAddingZone(false)}
-                  className="text-xs font-bold text-slate-400 hover:text-slate-500"
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
-
-            {!isAddingZone ? (
-              <div className="flex gap-2">
-                <select
-                  value={selectedZone}
-                  onChange={(e) => setSelectedZone(e.target.value)}
-                  className="flex-1 rounded-2xl border-2 border-slate-100 bg-slate-50/50 px-5 py-4 text-slate-700 outline-none transition-all focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 font-semibold cursor-pointer"
-                >
-                  {zones.map((zone) => (
-                    <option key={zone} value={zone} className="font-semibold text-slate-700">
-                      {zone}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={handleDeleteZone}
-                  className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-600 hover:bg-red-100 hover:text-red-700 transition-colors shadow-sm flex items-center justify-center"
-                  title="Delete selected zone"
-                >
-                  <Trash2 size={20} />
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="e.g. Zone D (Pineapple)"
-                  value={newZoneName}
-                  onChange={(e) => setNewZoneName(e.target.value)}
-                  className="flex-1 rounded-2xl border-2 border-slate-100 bg-slate-50/50 px-5 py-3.5 text-slate-800 outline-none transition-all focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
-                />
-                <button
-                  type="button"
-                  onClick={handleCreateZone}
-                  className="rounded-2xl bg-emerald-600 px-5 text-white font-bold hover:bg-emerald-700 transition-colors shadow-sm"
-                >
-                  Save
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* MAC Address Input */}
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">MAC Address</label>
-            <input
-              type="text"
-              required
-              placeholder="XX:XX:XX:XX:XX:XX"
-              value={macAddress}
-              onChange={(e) => setMacAddress(e.target.value)}
-              className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50/50 px-5 py-4 text-slate-800 outline-none transition-all focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 font-mono uppercase tracking-widest text-lg"
-            />
-            <p className="mt-2 text-xs text-slate-400 font-medium">Example: 24:0A:C4:00:11:22</p>
-          </div>
-          
-          <button
-            type="submit"
-            disabled={loading || !macAddress}
-            className="w-full rounded-2xl bg-emerald-600 px-5 py-4 text-white font-bold tracking-wide transition-all hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-600/30 active:scale-[0.98] disabled:opacity-70 mt-4"
-          >
-            {loading ? 'Connecting...' : 'Save Device'}
-          </button>
+          <div className="form-divider" />
+          <div className="form-step"><span>2</span><div><h2>กรอกรหัสอุปกรณ์ (MAC)</h2><p>ดูรหัสนี้ได้จากสติกเกอร์บนกล่องเซนเซอร์</p></div></div>
+          <label><span className="field-label">รหัสอุปกรณ์ 12 หลัก</span><span className="mac-input"><Cpu size={20} /><input className="field-input" value={macAddress} onChange={(e) => setMacAddress(e.target.value)} placeholder="24:0A:C4:00:11:22" maxLength={17} required /></span></label>
+          <div className="device-tip"><Wifi size={18} /><span><strong>ก่อนบันทึก</strong> เปิดอุปกรณ์และตรวจสอบว่าเชื่อมต่ออินเทอร์เน็ตแล้ว</span></div>
+          {message.text && <div className={`status-message status-message--${message.type}`}>{message.text}</div>}
+          <button className="primary-button submit-device" disabled={loading || !macAddress}>{loading ? 'กำลังเชื่อมต่อ...' : <><CheckCircle2 size={19} /> บันทึกและเริ่มใช้งาน</>}</button>
         </form>
+
+        <aside className="device-side">
+          <div className="device-help-card"><span>🦫</span><h2>น้อง Capy แนะนำ</h2><p>ตั้งชื่อพื้นที่ให้จำง่าย เช่น “แปลงพริก” หรือ “โรงเรือน 1” เวลาดูแจ้งเตือนจะรู้ทันทีว่าต้องไปที่ไหน</p></div>
+          <div className="panel device-list"><div className="device-list-title"><h2>อุปกรณ์ของฉัน</h2><span>{devices.length} เครื่อง</span></div>{devices.length === 0 ? <div className="empty-device"><Cpu size={26} /><p>ยังไม่มีอุปกรณ์<br /><small>เครื่องแรกของคุณจะแสดงที่นี่</small></p></div> : devices.slice(0, 5).map((device) => <div className="device-row" key={device.id}><span><Cpu size={18} /></span><div><strong>{device.zone || 'ไม่ระบุพื้นที่'}</strong><small>{device.device_mac}</small></div><i title="พร้อมใช้งาน" /></div>)}</div>
+        </aside>
       </div>
     </div>
   );

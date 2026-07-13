@@ -1,102 +1,69 @@
 import { useState } from 'react';
+import { ArrowRight, Eye, EyeOff, Leaf, LockKeyhole, Mail, ShieldCheck, Sprout, Wifi } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { Sprout } from 'lucide-react';
+import './Login.css';
+
+const errorMessages = {
+  'Invalid login credentials': 'อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาลองอีกครั้ง',
+  'Email not confirmed': 'กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ',
+  'User already registered': 'อีเมลนี้มีบัญชีอยู่แล้ว กรุณาเข้าสู่ระบบ',
+};
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isRegister, setIsRegister] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
 
-  const handleAuth = async (e) => {
-    e.preventDefault();
+  const handleAuth = async (event) => {
+    event.preventDefault();
     setLoading(true);
-    setErrorMsg('');
+    setMessage({ type: '', text: '' });
 
-    let error;
-    if (isRegister) {
-      const res = await supabase.auth.signUp({ email, password });
-      error = res.error;
-    } else {
-      const res = await supabase.auth.signInWithPassword({ email, password });
-      error = res.error;
-    }
+    const response = isRegister
+      ? await supabase.auth.signUp({ email, password })
+      : await supabase.auth.signInWithPassword({ email, password });
 
-    if (error) {
-      setErrorMsg(error.message);
+    if (response.error) {
+      setMessage({ type: 'error', text: errorMessages[response.error.message] || response.error.message });
+    } else if (isRegister) {
+      setMessage({ type: 'success', text: 'สร้างบัญชีแล้ว กรุณาเปิดอีเมลเพื่อยืนยันก่อนเข้าสู่ระบบ' });
     }
     setLoading(false);
   };
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center p-4">
-      {/* Background decoration */}
-      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-emerald-400 rounded-full mix-blend-multiply filter blur-[128px] opacity-20"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-green-400 rounded-full mix-blend-multiply filter blur-[128px] opacity-20"></div>
-
-      <div className="glass-panel w-full max-w-md p-10 relative z-10">
-        <div className="mb-10 text-center flex flex-col items-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 text-white shadow-xl shadow-emerald-500/30 mb-6">
-            <Sprout size={32} />
-          </div>
-          <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">
-            {isRegister ? 'Create Account' : 'Welcome Back'}
-          </h1>
-          <p className="mt-3 text-slate-500 font-medium">
-            {isRegister ? 'Start using your Smart Farm IoT system' : 'Sign in to view the latest sensor feeds'}
-          </p>
+    <div className="login-page">
+      <section className="login-hero" aria-label="CapyF ฟาร์มฉลาด เข้าใจง่าย">
+        <img src="/capyf-farm-hero.png" alt="คาปิบาราชาวสวนกำลังดูข้อมูลเซนเซอร์ในแปลงผัก" />
+        <div className="login-hero-badges">
+          <span><Wifi size={16} /> ดูข้อมูลสด</span><span><Leaf size={16} /> ดูแลพืชง่าย</span><span><ShieldCheck size={16} /> ข้อมูลปลอดภัย</span>
         </div>
+      </section>
 
-        {errorMsg && (
-          <div className="mb-6 rounded-2xl bg-red-50/80 p-4 text-sm font-medium text-red-600 border border-red-100">
-            {errorMsg}
+      <section className="login-form-side">
+        <div className="login-form-wrap">
+          <div className="login-brand"><span className="brand-mark"><Sprout size={22} /></span><span><strong>CapyF</strong><small>เพื่อนคู่ใจชาวสวน</small></span></div>
+          <div className="login-heading">
+            <span className="login-wave">👋</span>
+            <h1>{isRegister ? 'เริ่มดูแลสวนกับเรา' : 'ยินดีต้อนรับกลับสวน'}</h1>
+            <p>{isRegister ? 'สร้างบัญชีเพื่อเชื่อมต่ออุปกรณ์และดูข้อมูลฟาร์ม' : 'เข้าสู่ระบบเพื่อดูสภาพสวนล่าสุดของคุณ'}</p>
           </div>
-        )}
 
-        <form onSubmit={handleAuth} className="space-y-5">
-          <div>
-            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Email Address</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50/50 px-5 py-3.5 text-slate-800 outline-none transition-all focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
-              placeholder="name@example.com"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50/50 px-5 py-3.5 text-slate-800 outline-none transition-all focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
-              placeholder="••••••••"
-            />
-          </div>
-          
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-6 w-full rounded-2xl bg-emerald-600 px-5 py-4 text-white font-bold tracking-wide transition-all hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-600/30 active:scale-[0.98] disabled:opacity-70"
-          >
-            {loading ? 'Processing...' : (isRegister ? 'Register' : 'Login')}
-          </button>
-        </form>
+          {message.text && <div className={`status-message status-message--${message.type}`} role="alert">{message.text}</div>}
 
-        <div className="mt-8 text-center text-sm font-medium text-slate-500">
-          {isRegister ? 'Already have an account?' : "Don't have an account?"}
-          <button
-            onClick={() => setIsRegister(!isRegister)}
-            className="ml-2 font-bold text-emerald-600 hover:text-emerald-700 transition-colors"
-          >
-            {isRegister ? 'Login' : 'Register for free'}
-          </button>
+          <form onSubmit={handleAuth} className="login-form">
+            <label><span className="field-label">อีเมล</span><span className="input-with-icon"><Mail size={19} /><input className="field-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" placeholder="name@example.com" /></span></label>
+            <label><span className="field-label">รหัสผ่าน</span><span className="input-with-icon"><LockKeyhole size={19} /><input className="field-input" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required autoComplete={isRegister ? 'new-password' : 'current-password'} placeholder="อย่างน้อย 6 ตัวอักษร" /><button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}>{showPassword ? <EyeOff size={19} /> : <Eye size={19} />}</button></span></label>
+            <button type="submit" className="primary-button login-submit" disabled={loading}>{loading ? 'กำลังดำเนินการ...' : isRegister ? 'สร้างบัญชี CapyF' : 'เข้าสู่สวน'}{!loading && <ArrowRight size={19} />}</button>
+          </form>
+
+          <p className="login-switch">{isRegister ? 'มีบัญชีอยู่แล้ว?' : 'ยังไม่มีบัญชี?'} <button type="button" onClick={() => { setIsRegister((value) => !value); setMessage({ type: '', text: '' }); }}>{isRegister ? 'เข้าสู่ระบบ' : 'สร้างบัญชีใหม่'}</button></p>
+          <p className="login-note">CapyF ช่วยสรุปข้อมูลเซนเซอร์เป็นภาษาง่าย ๆ เพื่อให้คุณตัดสินใจดูแลสวนได้มั่นใจขึ้น</p>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
