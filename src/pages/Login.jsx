@@ -40,6 +40,7 @@ export default function Login() {
         <div className="login-form-wrap">
           <div className="login-heading">
             <span className="login-wave">👋</span>
+            <p className="login-product-name">CapyF</p>
             <h1>{isRegister ? 'เริ่มดูแลสวนกับเรา' : 'ยินดีต้อนรับกลับสวน'}</h1>
             <p>{isRegister ? 'สร้างบัญชีเพื่อเชื่อมต่ออุปกรณ์และดูข้อมูลฟาร์ม' : 'เข้าสู่ระบบเพื่อดูสภาพสวนล่าสุดของคุณ'}</p>
           </div>
