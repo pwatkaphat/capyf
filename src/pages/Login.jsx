@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, Eye, EyeOff, Leaf, LockKeyhole, Mail, ShieldCheck, Sprout, Wifi } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import './Login.css';
 
@@ -36,16 +36,8 @@ export default function Login() {
 
   return (
     <div className="login-page">
-      <section className="login-hero" aria-label="CapyF ฟาร์มฉลาด เข้าใจง่าย">
-        <img src="/capyf-farm-hero.png" alt="คาปิบาราชาวสวนกำลังดูข้อมูลเซนเซอร์ในแปลงผัก" />
-        <div className="login-hero-badges">
-          <span><Wifi size={16} /> ดูข้อมูลสด</span><span><Leaf size={16} /> ดูแลพืชง่าย</span><span><ShieldCheck size={16} /> ข้อมูลปลอดภัย</span>
-        </div>
-      </section>
-
       <section className="login-form-side">
         <div className="login-form-wrap">
-          <div className="login-brand"><span className="brand-mark"><Sprout size={22} /></span><span><strong>CapyF</strong><small>เพื่อนคู่ใจชาวสวน</small></span></div>
           <div className="login-heading">
             <span className="login-wave">👋</span>
             <h1>{isRegister ? 'เริ่มดูแลสวนกับเรา' : 'ยินดีต้อนรับกลับสวน'}</h1>
